@@ -148,6 +148,8 @@ int main(int argc, char **argv) {
     //       FIRST ROUND
     // ---------------------------
 
+    cerr << "First round started .." << endl;
+
     gzFile fp_1, fp_2;
     kseq_t *kseq_1, *kseq_2;
     fp_1 = gzopen(R1_file.c_str(), "r");
@@ -183,6 +185,8 @@ int main(int argc, char **argv) {
     // --------------------------
     //       SECOND ROUND
     // ---------------------------
+
+    cerr << "Second round started .." << endl;
 
     flat_hash_map<uint64_t, vector<uint64_t>> dedup;
 
