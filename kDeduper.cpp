@@ -12,13 +12,11 @@
 using namespace std;
 
 inline bool file_exists(const std::string &name) {
-    struct stat buffer
-            {
-            };
+    struct stat buffer {};
     return (stat(name.c_str(), &buffer) == 0);
 }
 
-uint64_t get_representativ_kmer(string &kmer_1, string &kmer_2) {
+uint64_t get_representative_kmer(string &kmer_1, string &kmer_2) {
     uint64_t canonical_kmer_1 = kmer::str_to_canonical_int(kmer_1);
     uint64_t canonical_kmer_2 = kmer::str_to_canonical_int(kmer_2);
     if (canonical_kmer_1 < canonical_kmer_2) return canonical_kmer_1;
@@ -26,7 +24,7 @@ uint64_t get_representativ_kmer(string &kmer_1, string &kmer_2) {
 }
 
 void debug_print_kmersCount(flat_hash_map<uint64_t, uint32_t> & kmersCount){
-    cerr << "----- DEBUG START ------" << endl;
+    cerr << "----- DEBUG START (kmer count) ------" << endl;
     for(const auto & item : kmersCount){
         cerr << item.first << ": " << item.second << endl;
     }
@@ -59,7 +57,9 @@ int main(int argc, char **argv) {
     while (getline(file, line)) count++;
     int no_of_sequences = count / 2;
 
-    // First iteration
+    // --------------------------
+    //       FIRST ROUND
+    // ---------------------------
 
     gzFile fp_1, fp_2;
     kseq_t *kseq_1, *kseq_2;
@@ -85,11 +85,19 @@ int main(int argc, char **argv) {
         string end_kmer = string(kseq_2->seq.s).substr(seq_2_length - kSize - terminal_kmer_offset, kSize);
 
         // Get the representative kmer and increment its count
-        uint64_t rep_kmer = get_representativ_kmer(start_kmer, end_kmer);
+        uint64_t rep_kmer = get_representative_kmer(start_kmer, end_kmer);
         kmers_to_count[rep_kmer]++;
 
     }
 
-    debug_print_kmersCount(kmers_to_count);
+    // Assertion passed
+    // debug_print_kmersCount(kmers_to_count);
+
+
+    // --------------------------
+    //       SECOND ROUND
+    // ---------------------------
+
+
 
 }
