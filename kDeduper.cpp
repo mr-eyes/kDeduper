@@ -12,7 +12,7 @@
 using namespace std;
 
 inline bool file_exists(const std::string &name) {
-    struct stat buffer {};
+    struct stat buffer{};
     return (stat(name.c_str(), &buffer) == 0);
 }
 
@@ -23,13 +23,97 @@ uint64_t get_representative_kmer(string &kmer_1, string &kmer_2) {
     else return canonical_kmer_2;
 }
 
-void debug_print_kmersCount(flat_hash_map<uint64_t, uint32_t> & kmersCount){
+void debug_print_kmersCount(flat_hash_map<uint64_t, uint32_t> &kmersCount) {
     cerr << "----- DEBUG START (kmer count) ------" << endl;
-    for(const auto & item : kmersCount){
+    for (const auto &item : kmersCount) {
         cerr << item.first << ": " << item.second << endl;
     }
     cerr << "-----  DEBUG END  ------" << endl;
 }
+
+std::string reverse_complement(std::string seq) {
+    auto lambda = [](const char c) {
+        switch (c) {
+            case 'A':
+                return 'T';
+            case 'G':
+                return 'C';
+            case 'C':
+                return 'G';
+            case 'T':
+                return 'A';
+            case 'N':
+                return 'N';
+            default:
+                throw std::domain_error("Invalid nucleotide.");
+        }
+    };
+    std::transform(seq.cbegin(), seq.cend(), seq.begin(), lambda);
+    reverse(seq.begin(), seq.end());
+    return seq;
+}
+
+class fastqWriter {
+
+public:
+    ofstream fileStream_r1, fileStream_r2;
+
+    explicit fastqWriter(const string &filename_prefix) {
+        this->fileStream_r1.open(filename_prefix + "_R1.fastq");
+        this->fileStream_r2.open(filename_prefix + "_R2.fastq");
+    }
+
+    void write(kseq_t *seq1, kseq_t *seq2) {
+
+        this->fileStream_r1 << '@';
+        this->fileStream_r1 << seq1->name.s;
+        this->fileStream_r1 << ' ';
+        this->fileStream_r1 << seq1->comment.s;
+        this->fileStream_r1 << endl;
+        this->fileStream_r1 << seq1->seq.s;
+        this->fileStream_r1 << "\n+\n";
+        this->fileStream_r1 << seq1->qual.s;
+        this->fileStream_r1 << endl;
+
+        this->fileStream_r2 << '@';
+        this->fileStream_r2 << seq2->name.s;
+        this->fileStream_r2 << ' ';
+        this->fileStream_r2 << seq2->comment.s;
+        this->fileStream_r2 << endl;
+        this->fileStream_r2 << seq2->seq.s;
+        this->fileStream_r2 << "\n+\n";
+        this->fileStream_r2 << seq2->qual.s;
+        this->fileStream_r2 << endl;
+    }
+
+    void close() {
+        fileStream_r1.close();
+        fileStream_r2.close();
+    }
+
+};
+
+
+uint64_t canonicalFragmentHash(kseq_t *kseq_1, kseq_t *kseq_2, hash<string> &fragmentHasher) {
+
+    string fragment_seq = kseq_1->seq.s;
+    fragment_seq.append(kseq_2->seq.s);
+
+    string revComplement_fragment = reverse_complement(fragment_seq);
+
+
+    uint64_t fragment_hash = fragmentHasher(fragment_seq);
+    uint64_t revComplement_fragment_hash = fragmentHasher(revComplement_fragment);
+
+
+    if (fragment_hash < revComplement_fragment_hash) {
+        return fragment_hash;
+    } else {
+        return revComplement_fragment_hash;
+    }
+
+}
+
 
 int main(int argc, char **argv) {
 
@@ -69,16 +153,13 @@ int main(int argc, char **argv) {
     kseq_1 = kseq_init(fp_1);
     kseq_2 = kseq_init(fp_2);
 
-    flat_hash_map<uint64_t , uint32_t> kmers_to_count;
+    flat_hash_map<uint64_t, uint32_t> kmers_to_count;
 
     int terminal_kmer_offset = 2;
 
     for (int seqCounter = 0; kseq_read(kseq_1) >= 0 && kseq_read(kseq_2) >= 0; seqCounter++) {
 
-        uint32_t seq_1_length = string(kseq_1->seq.s).size();
         uint32_t seq_2_length = string(kseq_2->seq.s).size();
-
-        if (seq_1_length < kSize || seq_2_length < kSize) continue;
 
         // Extract the start and end kmers
         string start_kmer = string(kseq_1->seq.s).substr(0 + terminal_kmer_offset, kSize);
@@ -90,6 +171,11 @@ int main(int argc, char **argv) {
 
     }
 
+    kseq_destroy(kseq_1);
+    kseq_destroy(kseq_2);
+    gzclose(fp_1);
+    gzclose(fp_2);
+
     // Assertion passed
     // debug_print_kmersCount(kmers_to_count);
 
@@ -98,6 +184,39 @@ int main(int argc, char **argv) {
     //       SECOND ROUND
     // ---------------------------
 
+    flat_hash_map<uint64_t, vector<uint64_t>> dedup;
 
+    fp_1 = gzopen(R1_file.c_str(), "r");
+    fp_2 = gzopen(R2_file.c_str(), "r");
+
+    kseq_1 = kseq_init(fp_1);
+    kseq_2 = kseq_init(fp_2);
+
+    hash<string> fragmentHasher;
+
+    fastqWriter rawReadsWriter("raw");
+    fastqWriter dedupReadsWriter("dedup");
+
+
+    for (int seqCounter = 0; kseq_read(kseq_1) >= 0 && kseq_read(kseq_2) >= 0; seqCounter++) {
+
+        uint32_t seq_2_length = string(kseq_2->seq.s).size();
+
+        // Extract the start and end kmers
+        string start_kmer = string(kseq_1->seq.s).substr(0 + terminal_kmer_offset, kSize);
+        string end_kmer = string(kseq_2->seq.s).substr(seq_2_length - kSize - terminal_kmer_offset, kSize);
+
+        // Get the representative kmer and increment its count
+        uint64_t rep_kmer = get_representative_kmer(start_kmer, end_kmer);
+
+        if (kmers_to_count[rep_kmer] <= 1) {
+            rawReadsWriter.write(kseq_1, kseq_2);
+            continue;
+        }
+
+        uint64_t fragment_canonical_hash = canonicalFragmentHash(kseq_1, kseq_2, fragmentHasher);
+
+        
+    }
 
 }
