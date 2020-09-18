@@ -117,13 +117,17 @@ uint64_t canonicalFragmentHash(kseq_t *kseq_1, kseq_t *kseq_2, hash<string> &fra
 
 int main(int argc, char **argv) {
 
-//    if (argc != 3) {
-//        cerr << "run ./kDeduper <R1> <R2>" << endl;
-//        exit(1);
-//    }
+    if (argc != 4) {
+        cerr << "run ./kDeduper <R1> <R2> <output_prefix>" << endl;
+        exit(1);
+    }
 
-    string R1_file = "/home/mabuelanin/Desktop/dev-plan/kDeduper/sample_data/R1.fastq"; // argv[1];
-    string R2_file = "/home/mabuelanin/Desktop/dev-plan/kDeduper/sample_data/R2.fastq"; // argv[2];
+//    string R1_file = "/home/mabuelanin/Desktop/dev-plan/kDeduper/sample_data/R1.fastq"; // argv[1];
+//    string R2_file = "/home/mabuelanin/Desktop/dev-plan/kDeduper/sample_data/R2.fastq"; // argv[2];
+
+    string R1_file = argv[1];
+    string R2_file = argv[2];
+    string output_prefix = argv[3];
 
     if (!file_exists(R1_file)) {
         throw std::runtime_error("Could not open R1 file");
@@ -134,12 +138,12 @@ int main(int argc, char **argv) {
     }
 
     int kSize = 31;
-    cerr << "counting number of reads ..." << endl;
-    int count = 0;
-    string line;
-    ifstream file(R1_file);
-    while (getline(file, line)) count++;
-    int no_of_sequences = count / 2;
+//    cerr << "counting number of reads ..." << endl;
+//    int count = 0;
+//    string line;
+//    ifstream file(R1_file);
+//    while (getline(file, line)) count++;
+//    int no_of_sequences = count / 2;
 
     // --------------------------
     //       FIRST ROUND
@@ -194,8 +198,8 @@ int main(int argc, char **argv) {
 
     hash<string> fragmentHasher;
 
-    fastqWriter rawReadsWriter("raw");
-    fastqWriter dedupReadsWriter("dedup");
+    fastqWriter rawReadsWriter(output_prefix + "_raw");
+    fastqWriter dedupReadsWriter(output_prefix + "_dedup");
 
 
     for (int seqCounter = 0; kseq_read(kseq_1) >= 0 && kseq_read(kseq_2) >= 0; seqCounter++) {
@@ -209,14 +213,27 @@ int main(int argc, char **argv) {
         // Get the representative kmer and increment its count
         uint64_t rep_kmer = get_representative_kmer(start_kmer, end_kmer);
 
+        // Get the canonical hash of the whole fragment
+        uint64_t fragment_canonical_hash = canonicalFragmentHash(kseq_1, kseq_2, fragmentHasher);
+
+        if(kmers_to_count[rep_kmer] > 1){
+            if(dedup.find(rep_kmer) == dedup.end()){
+                dedup[rep_kmer].emplace_back(fragment_canonical_hash);
+                dedupReadsWriter.write(kseq_1, kseq_2);
+            }else{
+                if(find(dedup[rep_kmer].begin(), dedup[rep_kmer].end(), fragment_canonical_hash) == dedup[rep_kmer].end()){
+                    dedup[rep_kmer].emplace_back(fragment_canonical_hash);
+                    dedupReadsWriter.write(kseq_1, kseq_2);
+                }
+            }
+        }
+
         if (kmers_to_count[rep_kmer] <= 1) {
             rawReadsWriter.write(kseq_1, kseq_2);
+            dedup[rep_kmer].emplace_back(fragment_canonical_hash);
             continue;
         }
 
-        uint64_t fragment_canonical_hash = canonicalFragmentHash(kseq_1, kseq_2, fragmentHasher);
-
-        
     }
 
 }
