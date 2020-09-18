@@ -1,15 +1,14 @@
-#include "colored_kDataFrame.hpp"
 #include <string>
 #include <iostream>
 #include <vector>
 #include "kseqReader.hpp"
 #include <sys/stat.h>
 #include <map>
-#include <fstream>
-#include <cassert>
-#include "Utils/kmer.h"
-
+#include "kmer.h"
+#include "phmap.h"
+#include "fstream"
 using namespace std;
+using namespace phmap;
 
 inline bool file_exists(const std::string &name) {
     struct stat buffer{};
@@ -180,9 +179,6 @@ int main(int argc, char **argv) {
     gzclose(fp_1);
     gzclose(fp_2);
 
-    // Assertion passed
-    // debug_print_kmersCount(kmers_to_count);
-
 
     // --------------------------
     //       SECOND ROUND
@@ -216,19 +212,18 @@ int main(int argc, char **argv) {
         // Get the canonical hash of the whole fragment
         uint64_t fragment_canonical_hash = canonicalFragmentHash(kseq_1, kseq_2, fragmentHasher);
 
-        if(kmers_to_count[rep_kmer] > 1){
-            if(dedup.find(rep_kmer) == dedup.end()){
+        if (kmers_to_count[rep_kmer] > 1) {
+            if (dedup.find(rep_kmer) == dedup.end()) {
                 dedup[rep_kmer].emplace_back(fragment_canonical_hash);
                 dedupReadsWriter.write(kseq_1, kseq_2);
-            }else{
-                if(find(dedup[rep_kmer].begin(), dedup[rep_kmer].end(), fragment_canonical_hash) == dedup[rep_kmer].end()){
+            } else {
+                if (find(dedup[rep_kmer].begin(), dedup[rep_kmer].end(), fragment_canonical_hash) ==
+                    dedup[rep_kmer].end()) {
                     dedup[rep_kmer].emplace_back(fragment_canonical_hash);
                     dedupReadsWriter.write(kseq_1, kseq_2);
                 }
             }
-        }
-
-        if (kmers_to_count[rep_kmer] <= 1) {
+        } else {
             rawReadsWriter.write(kseq_1, kseq_2);
             dedup[rep_kmer].emplace_back(fragment_canonical_hash);
             continue;
