@@ -198,8 +198,13 @@ int main(int argc, char **argv) {
 
     hash<string> fragmentHasher;
 
-    fastqWriter rawReadsWriter(output_prefix + "_raw");
-    fastqWriter dedupReadsWriter(output_prefix + "_dedup");
+    // fastqWriter rawReadsWriter(output_prefix + "_raw");
+    // fastqWriter dedupReadsWriter(output_prefix + "_dedup");
+
+    fastqWriter dedupReadsWriter(output_prefix);
+
+    uint64_t dedup_reads_count = 0;
+    uint64_t raw_reads_count = 0;
 
 
     for (int seqCounter = 0; kseq_read(kseq_1) >= 0 && kseq_read(kseq_2) >= 0; seqCounter++) {
@@ -220,19 +225,25 @@ int main(int argc, char **argv) {
             if (dedup.find(rep_kmer) == dedup.end()) {
                 dedup[rep_kmer].emplace_back(fragment_canonical_hash);
                 dedupReadsWriter.write(kseq_1, kseq_2);
+                dedup_reads_count++;
             } else {
                 if (find(dedup[rep_kmer].begin(), dedup[rep_kmer].end(), fragment_canonical_hash) ==
                     dedup[rep_kmer].end()) {
                     dedup[rep_kmer].emplace_back(fragment_canonical_hash);
                     dedupReadsWriter.write(kseq_1, kseq_2);
+                    dedup_reads_count++;
                 }
             }
         } else {
-            rawReadsWriter.write(kseq_1, kseq_2);
+            raw_reads_count++;
+            dedupReadsWriter.write(kseq_1, kseq_2);
             dedup[rep_kmer].emplace_back(fragment_canonical_hash);
             continue;
         }
 
     }
+
+    cout << "Deduplicated reads: " << dedup_reads_count << endl;
+    cout << "Unique reads: " << raw_reads_count << endl; 
 
 }
